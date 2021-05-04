@@ -24,7 +24,7 @@ In this example, the throttle starts at 1000 to initialize the ESC, and the sequ
 // Test sequence: here we have four points defined, but you can 
 // put as many as you want. First value is ESC pwm, and second 
 // value is duration in seconds.
-var test = [[1000, 4], [1500, 2], [2000, 4], [2500, 1]];
+var test = [[1000, 10], [2000, 10], [3000, 10], [4000, 10]];
 
 // Test repeat
 var repeat = 1; // set to 1 to run the sequence only once
@@ -43,7 +43,10 @@ var kiEntered = 0.001; //Independent of timestep
 var maxI = 1000;
 var oldRPM = 0;
 var sum = 0;
-
+var startPWM = 1200;
+var maxPWM = 1900;
+var minPWM = 1000;
+var init = 0;
 // TimeStep
 var time = 0.025; // Frequency
 
@@ -67,7 +70,8 @@ var send_ip = "172.17.11.79"; // where to send the packet
 var send_port = 64126; // on which port to send the packet
 
 // runs the sequence
-var index = -1;
+var index = 0;
+var index1 = 0;
 var total = repeat;
 var totalTime = 0;
 var stepTime = 0;
@@ -87,6 +91,8 @@ rcb.wait(sequence, initDur);
 rcb.console.setVerbose(false);
 
 function sequence(){
+    
+    index1 = index1+time;
     if(index > -1){
         if(index === test.length){
             // end of sequence
@@ -99,9 +105,13 @@ function sequence(){
 
             readSensors(); //Read Sensor values
 
+            //rcb.console.print("StepTime: " +stepTime);
+            //rcb.console.print("times: " +times);
+            //rcb.console.print("Index: " +index);
             if(stepTime > times){
-                index++
-                stepTime = 0
+                index = index +1;
+                stepTime = 0;
+                rcb.console.print("TargetRPM: " +targetRPM);
             }
 
             rcb.wait(sequence, time); //Wait until next execution
@@ -139,9 +149,9 @@ function setRPM(result){
 
     curPWM = Math.max(Math.min(curPWM + dif*kp + changeD+changeI,maxPWM ),minPWM); // Calculate new PWM value
 
-    if (index>=1){ // Output once a second
+    if (index1>=1){ // Output once a second
         rcb.console.print('PWM: '+ curPWM.toFixed(0)+ "\tdiff: " + dif.toFixed(0) + "\tCorr: "+ (dif*kp).toFixed(2) + '\tRPMChange: '+ rpmChange.toFixed(0) + "\tCorr: " + (kd*(-rpmChange)).toFixed(2) + "\toldRpm: " +oldRPM.toFixed(0)+ "\tSum: "+ sum.toFixed(0)+"Corr: " + (sum*ki).toFixed(2));
-        index = 0;
+        index1 = 0;
     }
 
     rcb.output.set("escA",curPWM); // Set PWM signal
@@ -206,8 +216,8 @@ rcb.onKeyboardPress(function(key){
         rcb.udp.send(buffer);
         rcb.console.print("Send Start");
     } else if (key == 73){
-        var buffer = rcb.udp.str2ab("end");
-        rcb.udp.send(buffer);
+        var buffer2 = rcb.udp.str2ab("end");
+        rcb.udp.send(buffer2);
         rcb.console.print("Send End");
     } else if (key >= 48 && key<=57){
         mark = key-48;

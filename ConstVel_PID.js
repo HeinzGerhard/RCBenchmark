@@ -74,11 +74,16 @@ var oldRPM = 0;
 var sum = 0;
 var init = 1;
 readSensor(); // Get values during Startup
-initlization();
+rcb.udp.init(receive_port, send_ip, send_port, UDPInitialized);
+    
+function UDPInitialized(){
+    var buffer = rcb.udp.str2ab("Hi from RCbenchmark script!");
+    rcb.udp.send(buffer);
+    initlization();   // Start the sensor read loop until script is stopped.
+}
 
 function initlization(){
 // ESC initialization
-    rcb.udp.init(receive_port, send_ip, send_port, UDPInitialized);
     rcb.console.print("Initializing ESC...");
     rcb.output.set("escA",minVal);
     rcb.wait(startup, initDur);
@@ -201,8 +206,8 @@ rcb.onKeyboardPress(function(key){
         rcb.udp.send(buffer);
         rcb.console.print("Send Start");
     } else if (key == 73){
-        var buffer = rcb.udp.str2ab("end");
-        rcb.udp.send(buffer);
+        var buffer2 = rcb.udp.str2ab("end");
+        rcb.udp.send(buffer2);
         rcb.console.print("Send End");
     } else if (key >= 48 && key<=57){
         mark = key-48;
