@@ -28,23 +28,16 @@ var initDur = 2; // ESC initialization time (s)
 var startTime = 4;   //Startup Time
 var startPWM = 1150; // Startup Value
 
-// Test repeat
-var maxTime = 100; // Not used
-
 var targetRPM = 2500;
-var kpEntered = 0.1;   //Independent of timestep
-var kdEntered = 0.01;  //Independent of Timestep
-var kiEntered = 0.001; //Independent of timestep
-var maxI = 1000;       
 
 // TimeStep
 var time = 0.025; // Frequency
 
 // Caluclate and initlialise vlaues
 var curPWM = startPWM; 
-var kp = kpEntered*time; // Fix Kp so that it is constant over time
-var kd = kdEntered; // No changem because DRPM different
-var ki = kiEntered*time; // Fix Kp so that it is constant over time
+var kp = 0.1*time; // Fix Kp so that it is constant over time
+var kd = 0.01; // No changem because DRPM different
+var ki = 0.001*time; // Fix Kp so that it is constant over time
 
 // Init variables for Output
 var optical = 0; // Optical RPM Value
@@ -52,16 +45,48 @@ var dif = 0;    // Difference between real and optical RPM
 var rpmChange = 0; // Change in RPM since last measurement
 var mark = 0;     // Mark in Output
 
-var filePrefix = "ConstVel";
+// Variables for constant thrust
 
-var receive_port = 55047; // the listening port on this PC
-var send_ip = "172.17.11.79"; // where to send the packet
-var send_port = 64126; // on which port to send the packet
+var targetThrust = 1;
+var maxI = 100000;
+var thrust = 0; // thrust Value
+var kpT = 10*time; // Fix Kp so that it is constant over time
+var kdT = 1; // No changem because DRPM different
+var kiT = 0.1*time; // Fix Kp so that it is constant over time
+
+var filePrefix = "Startup";
+var fileName = "";
+
+var receive_port = 3041; // the listening port on this PC
+var send_ip = "127.0.0.1"; // where to send the packet
+var send_port = 3042; // on which port to send the packet
+var iteration = 0; // Number of skipped Messages_Running
+var frequency = 3; // Number of skipped Messages
+
+
+//
+
+let changeD = 0;
+let changeI = 0;
+// Polar
+
+
+var minVal = 1100;         // Min. input value [700us, 2300us]
+var maxVal = 1920;         // Max. input value [700us, 2300us]
+var t = 60;                // Time of the ramp input (seconds)
+var plateauDuration = 5;   // Time to wait at each plateau (seconds)
+var samplesAvg = 20;       // Number of samples to average at each reading (reduces noise and number of CSV rows)
+var repeat = 1;       // How many times to repeat the same sequence
+var rampGoDown = false;      // If set to true, the ramp will go up and down.
+
+// Set Mode
+
+var target = 1; // 1 for Const RPM, 2 for const Thrust
 
 // start new log file
 var add = ["TargetRPM", "Change","Integral","P","I","D","kp","ki","kd","Mark"];
-rcb.files.newLogFile({prefix: filePrefix, additionalHeaders: add});
 
+rcb.files.newLogFile({prefix: filePrefix, additionalHeaders: add});
 // hide console debug info
 rcb.console.setVerbose(false);
 
@@ -71,23 +96,76 @@ rcb.console.setVerbose(false);
 var index = 0;
 var totalTime = 0;
 var oldRPM = 0;
+var oldThrust = 0;
 var sum = 0;
-var init = 1;
+var init = 0;
+var stopValue = 0;
+
+// ESC initialization
+rcb.console.print("Initializing ESC...");
+rcb.output.set("escA",minVal);
+
 readSensor(); // Get values during Startup
 rcb.udp.init(receive_port, send_ip, send_port, UDPInitialized);
-    
+//startup();
+
 function UDPInitialized(){
-    var buffer = rcb.udp.str2ab("Hi from RCbenchmark script!");
-    rcb.udp.send(buffer);
-    initlization();   // Start the sensor read loop until script is stopped.
+    //var buffer = rcb.udp.str2ab("Hi from RCbenchmark script!");
+   // rcb.udp.send(buffer);
+    rcb.udp.onReceive(UDPReceived); // Register callback event
+
 }
 
-function initlization(){
-// ESC initialization
-    rcb.console.print("Initializing ESC...");
-    rcb.output.set("escA",minVal);
-    rcb.wait(startup, initDur);
+function UDPReceived(arrayBuffer) {
+    var message = rcb.udp.ab2str(arrayBuffer);
+
+    rcb.console.print("Received: " + message);
+    if (message.startsWith("Start,")) {
+        stopValue = 0;
+
+        fileName = message.split(",")[3];
+        targetRPM = Number(message.split(",")[2]);
+        targetThrust = Number(message.split(",")[7]);
+
+        filePrefix = "Run_" + message.split(",")[1]+ "" + message.split(",")[3] + "_" + message.split(",")[4];
+        rcb.files.newLogFile({prefix: filePrefix, additionalHeaders: add});
+        if (message.includes("Constant_RPM")){
+            rcb.console.print("Constant RPM ");
+            target = 1;
+            startup();   // Start the sensor read loop until script is stopped.
+        } else if (message.includes("Constant_Thrust")){
+            target = 2;
+            startup();   // Start the sensor read loop until script is stopped.
+        } else if (message.includes("Polar")){
+            startupPolar();
+        }
+    } else if (message.startsWith("RPM")) {
+        rcb.console.print(message);
+        targetRPM = Number(message.split(",")[1]);
+        rcb.console.print(targetRPM);
+    } else if (message.startsWith("Thrust")) {
+        rcb.console.print(message);
+        targetThrust = Number(message.split(",")[1]);
+        rcb.console.print(targetThrust);
+    } else if (message.startsWith("Mark")) {
+        mark = Number(message.split(",")[1]);
+    } else if (message.startsWith("kpT")) {
+        kpT = Number(message.split(",")[1])*time;
+    }else if (message.startsWith("kp")) {
+        kp = Number(message.split(",")[1])*time;
+    }else if (message.startsWith("Stop")){
+        stop(); // End script
+    }
+
 }
+
+function stop(){
+    stopValue = 1;
+    rcb.console.print("Stop excecution");
+    rcb.output.set("escA",startPWM);
+}
+
+// Constant Velocity
 
 function startup(){
 // Motor Startup
@@ -98,18 +176,13 @@ rcb.wait(sequence, startTime);
 
 
 function sequence(){
-    
-    init=0; // Disable logging in startup mode
+    init=1; // Disable logging in startup mode
     index = index+time;
-    
-    //Clear console to avoid instabilities
-    if (index >=1){
-        rcb.console.clear();
+
+    if (!stopValue) {
+        readSensors(); //Read Sensor values
+        rcb.wait(sequence, time); //Wait until next execution
     }
-    
-    readSensors(); //Read Sensor values
-    
-    rcb.wait(sequence, time); //Wait until next excetution
 }
 
 function readSensors(){
@@ -121,29 +194,33 @@ function readSensors(){
 }
 
 function setRPM(result){
-                    
-                    optical = result.motorOpticalSpeed.workingValue;
-                    
-                    dif = targetRPM-optical;
-                    rpmChange = optical - oldRPM;
-                    sum = sum+dif;
-                    
-                    sum = Math.max(Math.min(sum,maxI),-maxI); // Limit sum
-                    var changeD = Math.max(Math.min(kd*(-rpmChange),20),-20); // Limit input
-                    var changeI = Math.max(Math.min(sum*ki,20),-20);        // Limit input
-                    
-                    
-                    //if (rpmChange/time<-100){ // Limit PWM Change during deceleration
-                        //dif=0;
-                    //}
-                    
-                    curPWM = Math.max(Math.min(curPWM + dif*kp + changeD+changeI,maxPWM ),minPWM); // Calculate new PWM value
-                    
-                    if (index>=1){ // Output once a second
-                        rcb.console.print('PWM: '+ curPWM.toFixed(0)+ "\tdiff: " + dif.toFixed(0) + "\tCorr: "+ (dif*kp).toFixed(2) + '\tRPMChange: '+ rpmChange.toFixed(0) + "\tCorr: " + (kd*(-rpmChange)).toFixed(2) + "\toldRpm: " +oldRPM.toFixed(0)+ "\tSum: "+ sum.toFixed(0)+"Corr: " + (sum*ki).toFixed(2));
-                        index = 0;
+
+                    if (target == 1) {
+                        optical = result.motorOpticalSpeed.workingValue;
+                        dif = targetRPM - optical;
+                        rpmChange = optical - oldRPM;
+                        sum = sum + dif;
+
+                        sum = Math.max(Math.min(sum, maxI), -maxI); // Limit sum
+                        changeD = Math.max(Math.min(kd * (-rpmChange), 20), -20); // Limit input
+                        changeI = Math.max(Math.min(sum * ki, 20), -20);        // Limit input
+
+                        curPWM = Math.max(Math.min(curPWM + dif * kp + changeD + changeI, maxPWM), minPWM); // Calculate new PWM value
+                    } else if (target == 2){
+
+                        thrust = result.thrust.workingValue*9.81;
+
+                        dif = targetThrust-thrust;
+                        rpmChange = thrust - oldThrust;
+                        sum = sum+dif;
+
+                        sum = Math.max(Math.min(sum,maxI),-maxI); // Limit sum
+                        changeD = Math.max(Math.min(kdT*(-rpmChange),20),-20); // Limit input
+                        changeI = Math.max(Math.min(sum*kiT,20),-20);        // Limit input
+                        curPWM = Math.max(Math.min(curPWM + dif*kpT + changeD+changeI,maxPWM ),minPWM); // Calculate new PWM value
+
                     }
-                    
+
                     rcb.output.set("escA",curPWM); // Set PWM signal
                     
                     oldRPM=optical; //Save last value
@@ -151,49 +228,172 @@ function setRPM(result){
                     // Save Log file
                     var add = [targetRPM, rpmChange,sum,dif*kp,sum*ki,kd*(-rpmChange),kp/time,ki/time,kd,mark];
                     rcb.files.newLogEntry(result, readSensor,add);
+                    sendUDP(result);
+                    if (index>=1){ // Output once a second
+                        rcb.console.print('PWM: '+ curPWM.toFixed(0)+ "\tdiff: " + dif.toFixed(0) + "\tCorr: "+ (dif*kp).toFixed(2) + '\tRPMChange: '+ rpmChange.toFixed(0) + "\tCorr: " + (kd*(-rpmChange)).toFixed(2) + "\toldRpm: " +oldRPM.toFixed(0)+ "\tSum: "+ sum.toFixed(0)+"Corr: " + (sum*ki).toFixed(2));
+                        index = 0;
+                    }
                 }
-                
-                
-// Output Values to logfile during startup
-function readSensor(){
-    if (init==1){ //Abort if after startup
-        rcb.sensors.read(saveResult,1);
+
+
+function sendUDP(result){
+    iteration += 1;
+    if (iteration >= frequency) {
+        try {
+            let temp = result.temp4N76.workingValue.toFixed(2);
+            let time = result.time.workingValue.toFixed(3);
+            let escA = result.escA.workingValue.toFixed(0);
+            let torque = result.torque.workingValue.toFixed(3);
+            let thrust = result.thrust.workingValue*9.81;
+            thrust = thrust.toFixed(3);
+            let voltage = result.voltage.workingValue.toFixed(2);
+            let current = result.current.workingValue.toFixed(2);
+            let motorOpticalSpeed = result.motorOpticalSpeed.workingValue.toFixed(0);
+            var buffer2 = rcb.udp.str2ab(motorOpticalSpeed + ',' + temp + ',' + time + ',' + escA + ',' + torque + ',' + thrust + ',' + voltage + ',' + current + '\n');
+            rcb.udp.send(buffer2);
+        iteration = 0;
+        } catch (error) {
+            // expected output: ReferenceError: nonExistentFunction is not defined
+            // Note - error messages will vary depending on browser
+        }
     }
 }
 
+// Output Values to logfile during startup
+function readSensor(){
+        rcb.sensors.read(saveResult,1);
+}
 function saveResult(result){
     var add = [targetRPM, rpmChange,sum,dif*kp,sum*ki,kd*(-rpmChange),kp/time,ki/time,kd,mark];
     rcb.files.newLogEntry(result, readSensor,add);
+    //result.print();
+    sendUDP(result);
+    if (init === 0){
+        readSensor();
+    }
+
 }
 
 
+///////////////// Beginning of the script //////////////////
+
+function startupPolar() {
+//Reading sensors and writing to file continuously
+    rcb.files.newLogFile({prefix: filePrefix});
+    readSensorPolar();   // Start the loop. After readSensor(), readDone() followed by readSensor(), etc.
+
+//ESC initialization
+    rcb.console.print("Initializing ESC...");
+    rcb.output.set("esc",1000);
+    rcb.wait(startPlateau, 4);
+
+}
+function readSensorPolar(){
+    rcb.console.setVerbose(false);
+    rcb.sensors.read(readDone, samplesAvg);
+    rcb.console.setVerbose(true);
+}
+
+function readDone(result){
+    rcb.console.setVerbose(false);
+    rcb.files.newLogEntry(result,readSensorPolar);
+    rcb.console.setVerbose(true);
+    sendUDP(result);
+}
+
+//Start plateau
+function startPlateau(){
+    rcb.console.print("Start Plateau...");
+    rcb.output.set("esc",minVal);
+    rcb.wait(rampUp, plateauDuration);
+}
+
+//Ramp up
+function rampUp(){
+    rcb.console.print("Ramping Up...");
+    rcb.output.ramp("esc", minVal, maxVal, t, upPlateau);
+}
+
+//Up Plateau
+function upPlateau() {
+    rcb.console.print("Up Plateau...");
+    rcb.wait(rampDown, plateauDuration);
+}
+
+//Ramp down
+function rampDown() {
+    if(!stopValue) {
+        if (rampGoDown) {
+            rcb.console.print("Ramping Down...");
+            rcb.output.ramp("esc", maxVal, minVal, t, endPlateau);
+        } else
+            endPolar();
+    } else {
+        rcb.output.set("esc",minVal);
+    }
+}
+
+//End Plateau
+function endPlateau() {
+    rcb.console.print("End Plateau...");
+    rcb.wait(endPolar, plateauDuration);
+}
+
+
+//Ends or loops the script
+function endPolar() {
+    if(!stopValue) {
+        if (--repeat > 0) {
+            if (repeat === 0) {
+                rcb.console.print("Repeating one last time...");
+            } else {
+                rcb.console.print("Repeating " + repeat + " more times...");
+            }
+            startPlateau();
+        } else {
+            rcb.endScript();
+        }
+    } else {
+        rcb.output.set("esc",minVal);
+    }
+}
+
+
+/*
 // Setup keypress callback function
 rcb.onKeyboardPress(function(key){
     // Print on screen which key was pressed
-    var ascii = String.fromCharCode(key);
     if (key == 69){
         kp = kp*1.1;
+        kpT = kpT*1.1;
         rcb.console.print("New Kp: " +kp/time);
     }else if (key == 68){
         kp = kp/1.1;
+        kpT = kpT*1.1;
         rcb.console.print("New Kp: " +kp/time);
     }else if (key == 87){
         kd = kd*1.1;
+        kdT = kdT*1.1;
         rcb.console.print("New Kd: " +kd);
     } else if (key == 83){
         kd = kd/1.1;
+        kdT = kdT/1.1;
         rcb.console.print("New Kd: " +kd);
     } else if (key == 82){
         targetRPM = targetRPM+50;
+        targetThrust = targetThrust+0.5;
         rcb.console.print("New targetRPM: " +targetRPM);
     } else if (key == 70){
         targetRPM = targetRPM-50;
+        targetThrust = targetThrust-0.5;
         rcb.console.print("New targetRPM: " +targetRPM);
     } else if (key == 81){
         ki = ki*1.1;
+        kiT = kiT*1.1;
         rcb.console.print("New ki: " +ki/time);
     } else if (key == 65){
         ki = ki/1.1;
+        kiT = kiT/1.1;
         rcb.console.print("New ki: " +ki);
     } else if (key == 84){
         maxI = maxI*1.1;
@@ -212,10 +412,9 @@ rcb.onKeyboardPress(function(key){
     } else if (key >= 48 && key<=57){
         mark = key-48;
         rcb.console.print("Mark: " +mark);
-    } else {
-        
-    rcb.console.print("You pressed " + ascii + " (ASCII " + key + ")");
-    }
+    } //else {
+        //var ascii = String.fromCharCode(key);
+        //rcb.console.print("You pressed " + ascii + " (ASCII " + key + ")");
+    //}
 });
-
-
+*/

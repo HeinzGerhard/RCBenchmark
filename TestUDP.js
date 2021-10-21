@@ -29,9 +29,9 @@ to your own application. For inspiration:
 
 ///////////// User defined variables //////////// */
 
-var receive_port = 55047; // the listening port on this PC
-var send_ip = "192.168.1.114"; // where to send the packet
-var send_port = 64126; // on which port to send the packet
+var receive_port = 12345; // the listening port on this PC
+var send_ip = "127.0.0.1"; // where to send the packet
+var send_port = 3035; // on which port to send the packet
 var samplesAvg = 50; // how many data samples to average before sending to TCP (helps to slow down communication rate)
 
 ///////////////// Beginning of the script //////////////////

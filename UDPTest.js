@@ -1,6 +1,6 @@
 /* //////////////// Description ////////////////
 
-This Script sets the RPM of the Motor content using a PID Controller
+This Script sets the RPM of the Motor content usung a PID Controller
 
 
 Usage:
@@ -31,11 +31,11 @@ var startPWM = 1150; // Startup Value
 // Test repeat
 var maxTime = 100; // Not used
 
-var targetThrust = 1;
-var kpEntered = 10;   //Independent of timestep
-var kdEntered = 1;  //Independent of Timestep
-var kiEntered = 0.1; //Independent of timestep
-var maxI = 100000;
+var targetRPM = 2500;
+var kpEntered = 0.1;   //Independent of timestep
+var kdEntered = 0.01;  //Independent of Timestep
+var kiEntered = 0.001; //Independent of timestep
+var maxI = 1000;
 
 // TimeStep
 var time = 0.025; // Frequency
@@ -47,8 +47,8 @@ var kd = kdEntered; // No changem because DRPM different
 var ki = kiEntered*time; // Fix Kp so that it is constant over time
 
 // Init variables for Output
-var thrust = 0; // thrust Value
-var dif = 0;    // Difference between real and thrust
+var optical = 0; // Optical RPM Value
+var dif = 0;    // Difference between real and optical RPM
 var rpmChange = 0; // Change in RPM since last measurement
 var mark = 0;     // Mark in Output
 
@@ -59,7 +59,7 @@ var send_ip = "172.17.11.79"; // where to send the packet
 var send_port = 64126; // on which port to send the packet
 
 // start new log file
-var add = ["targetThrust", "Change","Integral","P","I","D","kp","ki","kd","Mark"];
+var add = ["TargetRPM", "Change","Integral","P","I","D","kp","ki","kd","Mark"];
 rcb.files.newLogFile({prefix: filePrefix, additionalHeaders: add});
 
 // hide console debug info
@@ -70,13 +70,12 @@ rcb.console.setVerbose(false);
 //Sequence Values
 var index = 0;
 var totalTime = 0;
-var oldThrust = 0;
+var oldRPM = 0;
 var sum = 0;
 var init = 1;
 readSensor(); // Get values during Startup
-
 rcb.udp.init(receive_port, send_ip, send_port, UDPInitialized);
-   
+
 function UDPInitialized(){
     var buffer = rcb.udp.str2ab("Hi from RCbenchmark script!");
     rcb.udp.send(buffer);
@@ -123,10 +122,10 @@ function readSensors(){
 
 function setRPM(result){
 
-    thrust = result.thrust.workingValue*9.81;
+    optical = result.motorOpticalSpeed.workingValue;
 
-    dif = targetThrust-thrust;
-    rpmChange = thrust - oldThrust;
+    dif = targetRPM-optical;
+    rpmChange = optical - oldRPM;
     sum = sum+dif;
 
     sum = Math.max(Math.min(sum,maxI),-maxI); // Limit sum
@@ -141,16 +140,16 @@ function setRPM(result){
     curPWM = Math.max(Math.min(curPWM + dif*kp + changeD+changeI,maxPWM ),minPWM); // Calculate new PWM value
 
     if (index>=1){ // Output once a second
-        rcb.console.print('PWM: '+ curPWM.toFixed(0)+ "\tdiff: " + dif.toFixed(0) + "\tCorr: "+ (dif*kp).toFixed(2) + '\tRPMChange: '+ rpmChange.toFixed(0) + "\tCorr: " + (kd*(-rpmChange)).toFixed(2) + "\toldThrust: " +oldThrust.toFixed(0)+ "\tSum: "+ sum.toFixed(0)+"Corr: " + (sum*ki).toFixed(2));
+        rcb.console.print('PWM: '+ curPWM.toFixed(0)+ "\tdiff: " + dif.toFixed(0) + "\tCorr: "+ (dif*kp).toFixed(2) + '\tRPMChange: '+ rpmChange.toFixed(0) + "\tCorr: " + (kd*(-rpmChange)).toFixed(2) + "\toldRpm: " +oldRPM.toFixed(0)+ "\tSum: "+ sum.toFixed(0)+"Corr: " + (sum*ki).toFixed(2));
         index = 0;
     }
 
     rcb.output.set("escA",curPWM); // Set PWM signal
 
-    oldThrust=thrust; //Save last value
+    oldRPM=optical; //Save last value
 
     // Save Log file
-    var add = [targetThrust, rpmChange,sum,dif*kp,sum*ki,kd*(-rpmChange),kp/time,ki/time,kd,mark];
+    var add = [targetRPM, rpmChange,sum,dif*kp,sum*ki,kd*(-rpmChange),kp/time,ki/time,kd,mark];
     rcb.files.newLogEntry(result, readSensor,add);
 }
 
@@ -163,7 +162,7 @@ function readSensor(){
 }
 
 function saveResult(result){
-    var add = [targetThrust, rpmChange,sum,dif*kp,sum*ki,kd*(-rpmChange),kp/time,ki/time,kd,mark];
+    var add = [targetRPM, rpmChange,sum,dif*kp,sum*ki,kd*(-rpmChange),kp/time,ki/time,kd,mark];
     rcb.files.newLogEntry(result, readSensor,add);
 }
 
@@ -185,11 +184,11 @@ rcb.onKeyboardPress(function(key){
         kd = kd/1.1;
         rcb.console.print("New Kd: " +kd);
     } else if (key == 82){
-        targetThrust = targetThrust+1;
-        rcb.console.print("New targetThrust: " +targetThrust);
+        targetRPM = targetRPM+50;
+        rcb.console.print("New targetRPM: " +targetRPM);
     } else if (key == 70){
-        targetThrust = targetThrust-1;
-        rcb.console.print("New targetThrust: " +targetThrust);
+        targetRPM = targetRPM-50;
+        rcb.console.print("New targetRPM: " +targetRPM);
     } else if (key == 81){
         ki = ki*1.1;
         rcb.console.print("New ki: " +ki/time);
