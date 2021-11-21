@@ -1,0 +1,2 @@
+﻿Time (s),ESC (µs),Servo (µs),Torque (N·m),Thrust (N),Voltage (V),Current (A),Motor Optical Speed (RPM),Electrical Power (W),Mechanical Power (W),Motor Efficiency (%),Propeller Mech. Efficiency (N/W),Overall Efficiency (N/W),4N76 Temp (ºC),App message,TargetRPM,Change,Integral,P,I,D,kp,ki,kd,Mark,
+0,1000,,-0.017964446527798494,0.15826647600537447,29.931972782214423,0.17038450597777066,3062,5.099944395437682,5.7611886870391835,112.96571570845045,0.027471149549644674,0.031032980702094867,24.75,,3000,-1,-1000,-0.15500000000000003,-0.025,0.01,0.10000000000000002,0.001,0.01,0,
