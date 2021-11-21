@@ -126,9 +126,9 @@ function readSensors(){
 function setRPM(result){
 
     if (target == 1) {// Constant RPM
-        optical = result.motorOpticalSpeed.workingValue;
-        dif = targetRPM - optical;
-        rpmChange = optical - oldRPM;
+        optical = result.motorOpticalSpeed.workingValue - oldRPM > 1000 ? result.motorOpticalSpeed.workingValue : oldRPM;
+        dif = Math.min(targetRPM - optical,100); // Limit maximum change
+        rpmChange = Math.min(optical - oldRPM, 50); // Limit maximum diff
         changeD = Math.max(Math.min(kd * (-rpmChange), 20), -20); // Limit input
         curPWM = Math.max(Math.min(curPWM + dif * kp + changeD, maxPWM), minPWM); // Calculate new PWM value
         oldRPM=optical; //Save last value
